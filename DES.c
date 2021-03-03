@@ -150,6 +150,9 @@ static const uint32_t P_table[32] = {
 static inline uint64_t PC1(uint64_t key64b);
 static inline uint64_t PC2(uint64_t CiDi);
 
+#ifdef __cplusplus
+extern "C"
+#endif
 void DES_keys_generate(uint64_t key, uint64_t keys48b[16])
 {
     uint64_t key56b = PC1(key);
@@ -169,12 +172,15 @@ void DES_keys_generate(uint64_t key, uint64_t keys48b[16])
 
 }
 
-//=============================> DES one block encode <========================//
+//=============================> DES one block encode/decode <========================//
 
 static inline uint64_t IP(uint64_t block);
 static inline uint64_t IP_reverse(uint64_t block);
 static inline uint32_t F(uint32_t Ri, uint64_t key48b);
 
+#ifdef __cplusplus
+extern "C"
+#endif
 uint64_t DES_encode_block(uint64_t  block, uint64_t keys48b[16])
 {
     block = IP(block);
@@ -194,6 +200,9 @@ uint64_t DES_encode_block(uint64_t  block, uint64_t keys48b[16])
     return block;
 }
 
+#ifdef __cplusplus
+extern "C"
+#endif
 uint64_t DES_decode_block(uint64_t block, uint64_t keys48b[16])
 {
     block = IP(block);
