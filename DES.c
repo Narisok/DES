@@ -1,5 +1,7 @@
 #include "DES.h"
 
+#include <endian.h>
+
 #define PERMUTATION(block, new_block, bits_count, table)  {                             \
     new_block = 0x0;                                                                    \
     for(size_t i = 0; i < (bits_count); ++i) {                                          \
@@ -39,6 +41,40 @@
     block <<= (part_size);                            \
     block |= right;                                   \
 }
+
+
+#if __BYTE_ORDER == __LITTLE_ENDIAN
+    #ifdef __GNUC__
+        #define MAKE_64B_FROM_8BYTES(block_to_make, pointer_to_8bytes)  block_to_make = __builtin_bswap64(*(uint64_t*)(pointer_to_8bytes));
+        #define WRITE_64B_TO_8BYTES(block, pointer_to_8bytes)           *(uint64_t*)(pointer_to_8bytes) = __builtin_bswap64(block);
+    #elif _WIN32
+        #define MAKE_64B_FROM_8BYTES(block_to_make, pointer_to_8bytes)  block_to_make = _byteswap_uint64(*(uint64_t*)(pointer_to_8bytes));
+        #define WRITE_64B_TO_8BYTES(block, pointer_to_8bytes)           *(uint64_t*)(pointer_to_8bytes) = _byteswap_uint64(block);
+    #else
+        #define MAKE_64B_FROM_8BYTES(block_to_make, pointer_to_8bytes)          \
+        block_to_make = 0x0;                                                    \
+        for(unsigned i = 0; i < 8; ++i)                                         \
+            block_to_make |= (uint64_t)(pointer_to_8bytes[i]) << (56 - i*8);
+
+        #define WRITE_64B_TO_8BYTES(block, pointer_to_8bytes)   \
+        for(unsigned i = 0; i < 8; ++i)                         \
+           pointer_to_8bytes[i] = (block) >> 56-i*8;
+    #endif
+#elif __BYTE_ORDER == __BIG_ENDIAN
+    #define MAKE_64B_FROM_8BYTES(block_to_make, pointer_to_8bytes)  block_to_make = (*(uint64_t*)(pointer_to_8bytes));
+    #define WRITE_64B_TO_8BYTES(block, pointer_to_8bytes) *(uint64_t*)(pointer_to_8bytes) = (block);
+#else
+    #define MAKE_64B_FROM_8BYTES(block_to_make, pointer_to_8bytes)          \
+    block_to_make = 0x0;                                                    \
+    for(unsigned i = 0; i < 8; ++i)                                         \
+        block_to_make |= (uint64_t)((pointer_to_8bytes)[i]) << (56 - i*8);    
+
+    #define WRITE_64B_TO_8BYTES(block, (pointer_to_8bytes))  \
+    for(unsigned i = 0; i < 8; ++i)                          \
+        (pointer_to_8bytes)[i] = (block) >> 56-i*8;
+#endif
+
+
 
 //=============================> DES tables <========================//
 
@@ -181,7 +217,7 @@ static inline uint32_t F(uint32_t Ri, uint64_t key48b);
 #ifdef __cplusplus
 extern "C"
 #endif
-uint64_t DES_encode_block(uint64_t  block, uint64_t keys48b[16])
+uint64_t DES_encode_block(uint64_t  block, const uint64_t keys48b[16])
 {
     block = IP(block);
     uint32_t Li, Ri;
@@ -203,7 +239,7 @@ uint64_t DES_encode_block(uint64_t  block, uint64_t keys48b[16])
 #ifdef __cplusplus
 extern "C"
 #endif
-uint64_t DES_decode_block(uint64_t block, uint64_t keys48b[16])
+uint64_t DES_decode_block(uint64_t block, const uint64_t keys48b[16])
 {
     block = IP(block);
 
@@ -223,7 +259,57 @@ uint64_t DES_decode_block(uint64_t block, uint64_t keys48b[16])
 }
 
 
+//=============================> DES encoding functions <========================//
+
+size_t DES_encode_ecb(const uint8_t *data, size_t bytes_count, uint8_t *encoded_data, const uint64_t keys48b[16], uint64_t(*padding)(const uint8_t*, uint8_t))
+{
+    uint64_t block, encoded_block;
+    size_t i = 0;
+    while(i+7 < bytes_count) {
+
+        MAKE_64B_FROM_8BYTES(block, data+i)
+        encoded_block = DES_encode_block(block, keys48b);
+        WRITE_64B_TO_8BYTES(encoded_block, encoded_data+i)
+
+        i+=8;
+    }
+
+    size_t rest = bytes_count - i;
+    if(padding != NULL) {
+        block = padding(data+i,rest);
+        encoded_block = DES_encode_block(block, keys48b);
+        WRITE_64B_TO_8BYTES(encoded_block, encoded_data+i)
+        return i+8;
+    } else {
+        if(rest) return i;
+        else //TODO no padding but has rest bytes
+    }
+}
+
+
+//=============================> DES padding functions <========================//
+
+uint64_t DES_padding_PKCS7(const uint8_t *data, size_t size_max_7_bytes)
+{
+    if(size_max_7_bytes > 7) {
+        //TODO error can't create padding more then 7 bytes
+    }
+    uint64_t padding = 0x0;
+    uint8_t val = 8-size_max_7_bytes;
+    for(unsigned i = 0; i < 8; ++i) {
+        if(i < size_max_7_bytes) {
+            padding |= (uint64_t)data[i] << (56- 8*i);
+        } else  {
+            padding |= (uint64_t)val << (56 - 8*i);
+        }
+    }
+    return padding;
+}
+
 //=============================> DES definition of functions <========================//
+
+size_t DES_calculate_encoded_size(size_t bytes_count)          { return bytes_count - (bytes_count%8) + 8; }
+size_t DES_calculate_decoded_size(size_t encoded_bytes_count)  { return encoded_bytes_count; }
 
 static inline uint64_t PC1(uint64_t key64b)
 {
