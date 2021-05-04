@@ -208,7 +208,7 @@ void DES_keys_generate(uint64_t key, uint64_t keys48b[16])
 
 }
 
-//=============================> DES one block encode/decode <========================//
+//=============================> DES one block encrypt/decrypt <========================//
 
 static inline uint64_t IP(uint64_t block);
 static inline uint64_t IP_reverse(uint64_t block);
@@ -217,7 +217,7 @@ static inline uint32_t F(uint32_t Ri, uint64_t key48b);
 #ifdef __cplusplus
 extern "C"
 #endif
-uint64_t DES_encode_block(uint64_t  block, const uint64_t keys48b[16])
+uint64_t DES_encrypt_block(uint64_t  block, const uint64_t keys48b[16])
 {
     block = IP(block);
     uint32_t Li, Ri;
@@ -239,7 +239,7 @@ uint64_t DES_encode_block(uint64_t  block, const uint64_t keys48b[16])
 #ifdef __cplusplus
 extern "C"
 #endif
-uint64_t DES_decode_block(uint64_t block, const uint64_t keys48b[16])
+uint64_t DES_decrypt_block(uint64_t block, const uint64_t keys48b[16])
 {
     block = IP(block);
 
@@ -259,37 +259,65 @@ uint64_t DES_decode_block(uint64_t block, const uint64_t keys48b[16])
 }
 
 
-//=============================> DES encoding functions <========================//
+//=============================> DES encrypting functions <========================//
 
-size_t DES_encode_ecb(const uint8_t *data, size_t bytes_count, uint8_t *encoded_data, const uint64_t keys48b[16], uint64_t(*padding)(const uint8_t*, uint8_t))
+size_t DES_encrypt_ecb(const uint8_t *input_data, size_t bytes_count, uint8_t *out_buffer, const uint64_t keys48b[16], uint64_t(*padding)(const uint8_t*, size_t))
 {
-    uint64_t block, encoded_block;
+    uint64_t block, encrypted_block;
     size_t i = 0;
     while(i+7 < bytes_count) {
 
-        MAKE_64B_FROM_8BYTES(block, data+i)
-        encoded_block = DES_encode_block(block, keys48b);
-        WRITE_64B_TO_8BYTES(encoded_block, encoded_data+i)
+        MAKE_64B_FROM_8BYTES(block, input_data+i)
+        encrypted_block = DES_encrypt_block(block, keys48b);
+        WRITE_64B_TO_8BYTES(encrypted_block, out_buffer+i)
 
         i+=8;
     }
 
     size_t rest = bytes_count - i;
     if(padding != NULL) {
-        block = padding(data+i,rest);
-        encoded_block = DES_encode_block(block, keys48b);
-        WRITE_64B_TO_8BYTES(encoded_block, encoded_data+i)
+        block = padding(input_data+i,rest);
+        encrypted_block = DES_encrypt_block(block, keys48b);
+        WRITE_64B_TO_8BYTES(encrypted_block, out_buffer+i)
         return i+8;
     } else {
-        if(rest) return i;
-        else //TODO no padding but has rest bytes
+        if(!rest) return i;
+        else return i; //TODO no padding but has rest bytes
+    }
+}
+
+
+//=============================> DES decrypting functions <========================//
+size_t DES_decrypt_ecb(const uint8_t *input_data, size_t bytes_count, uint8_t *out_buffer, const uint64_t keys48b[16], int(*padding)(const uint64_t, uint8_t*))
+{
+    uint64_t block, decrypted_block;
+    size_t i = 0;
+    const up = padding == NULL ? 7 : 8;
+    while(i+up < bytes_count) {
+
+        MAKE_64B_FROM_8BYTES(block, input_data+i)
+        decrypted_block = DES_decrypt_block(block, keys48b);
+        WRITE_64B_TO_8BYTES(decrypted_block, out_buffer+i)
+
+        i+=8;
+    }
+
+    size_t rest = bytes_count - i;
+    if(padding != NULL) {
+        MAKE_64B_FROM_8BYTES(block, input_data+i)
+        decrypted_block = DES_decrypt_block(block, keys48b);
+        size_t bytes_count = padding(decrypted_block, out_buffer+i);
+        return i + bytes_count;
+    } else {
+        if(!rest) return i;
+        else return i; //TODO no padding but has rest bytes
     }
 }
 
 
 //=============================> DES padding functions <========================//
 
-uint64_t DES_padding_PKCS7(const uint8_t *data, size_t size_max_7_bytes)
+uint64_t DES_padding_encrypt_PKCS7(const uint8_t *data, size_t size_max_7_bytes)
 {
     if(size_max_7_bytes > 7) {
         //TODO error can't create padding more then 7 bytes
@@ -306,10 +334,21 @@ uint64_t DES_padding_PKCS7(const uint8_t *data, size_t size_max_7_bytes)
     return padding;
 }
 
+int DES_padding_decrypt_PKCS7(const uint64_t last_block, uint8_t *out_buffer_min_7_bytes)
+{
+    uint8_t pointer[8];
+    WRITE_64B_TO_8BYTES(last_block, pointer);
+    for(int i = 0; i < 8 - pointer[7]; ++i) {
+        out_buffer_min_7_bytes[i] = pointer[i];
+    }
+
+    return 8-pointer[7];
+}
+
 //=============================> DES definition of functions <========================//
 
-size_t DES_calculate_encoded_size(size_t bytes_count)          { return bytes_count - (bytes_count%8) + 8; }
-size_t DES_calculate_decoded_size(size_t encoded_bytes_count)  { return encoded_bytes_count; }
+size_t DES_calculate_encrypted_size(size_t bytes_count)          { return bytes_count - (bytes_count%8) + 8; }
+size_t DES_calculate_decrypted_size(size_t encoded_bytes_count)  { return encoded_bytes_count; }
 
 static inline uint64_t PC1(uint64_t key64b)
 {
