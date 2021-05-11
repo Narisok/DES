@@ -18,13 +18,36 @@ int main(int argc, char **argv)
 {
     enum modes mode = encrypt|padding_PKCS7;
     int is_decrypting = 0;
-    size_t buff_size = 16/* *256 */;
+    size_t buff_size = 16*256*2;
+    char *key_hex = "";
 
     for(int i = 1; i < argc; ++i) {
         if(!strcmp( argv[i], "-d")) {
             is_decrypting = 1;
         }
+        if(!strcmp( argv[i], "-K")) {
+            if(argc > i+1) {
+                key_hex = argv[i+1];
+            }
+        }
     }
+    // printf("key %s\n", key_hex);
+
+    char *pos = key_hex;
+    int len = strlen(key_hex);
+    uint8_t key_raw[8]={};
+    for(size_t count = 0; count < len/2+1 && count < 8 ; count++) {
+        if(count == len/2 && count*2!=len) {
+            sscanf(pos, "%1hhx", &key_raw[count]);
+        } else {
+            sscanf(pos, "%2hhx", &key_raw[count]);
+            pos += 2;
+        }
+    }
+    // printf("key raw: ");
+    // for(int i = 0; i < 8; i++) printf("%x ", key_raw[i]);
+    // printf("\n\n");
+
 
     size_t out_buff_size = mode&decrypt ? DES_calculate_decrypted_size(buff_size) : DES_calculate_encrypted_size(buff_size);
     unsigned char *data_buffer = (unsigned char*)malloc(buff_size);
@@ -34,7 +57,9 @@ int main(int argc, char **argv)
         return -1;
     }
 
-    uint64_t key = 0x1234567812345678;
+    uint64_t key = 0x0;
+
+    for(int i = 0; i < 8; i++) key |=(uint64_t)key_raw[i]<<(56-i*8);
     uint64_t keys[16];
     DES_keys_generate(key, keys);
     if(is_decrypting) {
@@ -87,5 +112,5 @@ int main(int argc, char **argv)
             fwrite(out_buffer,1,out_size, stdout);
 
         };
-}
+    }
 }
