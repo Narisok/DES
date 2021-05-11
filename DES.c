@@ -292,7 +292,7 @@ size_t DES_decrypt_ecb(const uint8_t *input_data, size_t bytes_count, uint8_t *o
 {
     uint64_t block, decrypted_block;
     size_t i = 0;
-    const up = padding == NULL ? 7 : 8;
+    const unsigned up = padding == NULL ? 7 : 8;
     while(i+up < bytes_count) {
 
         MAKE_64B_FROM_8BYTES(block, input_data+i)
