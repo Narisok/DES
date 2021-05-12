@@ -1,6 +1,12 @@
 #include "DES.h"
 
-#include <endian.h>
+#ifdef __GNUC__
+    #ifdef __clang__
+        #include <machine/endian.h>
+    #else 
+        #include <endian.h>
+    #endif
+#endif
 
 #define PERMUTATION(block, new_block, bits_count, table)  {                             \
     new_block = 0x0;                                                                    \
@@ -33,7 +39,7 @@
 }
 
 #define LEFT_CYCLE_SHIFT(block, block_size, shift) {                                                              \
-    block = (( block << (shift) &  ~(~0<<(block_size)) ) | ( block >> (block_size - shift) &  ~(~0<<(shift)) ));  \
+    block = (( block << (shift) &  ~(~0u<<(block_size)) ) | ( block >> (block_size - shift) &  ~(~0<<(shift)) ));  \
 }
 
 #define COMBINE_TWO(left, right, block, part_size) {  \
